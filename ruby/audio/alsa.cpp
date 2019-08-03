@@ -48,8 +48,15 @@ struct AudioALSA : AudioDriver {
     return {20, 40, 60, 80, 100};
   }
 
+  auto hasDynamic() -> bool override { return true; };
+
   auto setDevice(string device) -> bool override { return initialize(); }
-  auto setBlocking(bool blocking) -> bool override { return true; }
+
+  auto setBlocking(bool blocking) -> bool override {
+    snd_pcm_nonblock(_interface, blocking);
+    return true;
+  }
+
   auto setChannels(uint channels) -> bool override { return true; }
   auto setFrequency(uint frequency) -> bool override { return initialize(); }
   auto setLatency(uint latency) -> bool override { return initialize(); }
@@ -66,18 +73,13 @@ struct AudioALSA : AudioDriver {
     _offset++;
 
     snd_pcm_sframes_t available;
-    do {
-      available = snd_pcm_avail_update(_interface);
-      if(available < 0) snd_pcm_recover(_interface, available, 1);
-      if(available < _offset) {
-        if(!self.blocking) {
-          _offset = 0;
-          return;
-        }
-        int error = snd_pcm_wait(_interface, -1);
-        if(error < 0) snd_pcm_recover(_interface, error, 1);
-      }
-    } while(available < _offset);
+
+    available = snd_pcm_avail(_interface);
+    if(available < 0) snd_pcm_recover(_interface, available, 1);
+    if(available < _offset && !self.blocking) {
+      _offset = 0;
+      return;
+    }
 
     uint32_t* output = _buffer;
     int i = 4;
